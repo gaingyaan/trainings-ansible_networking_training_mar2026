@@ -1,4 +1,4 @@
 ---
-ansible_host: 192.168.100.20
+# ansible_host: 192.168.100.20
 server_role: test
 motd: "Ubuntu test server — lab environment"
