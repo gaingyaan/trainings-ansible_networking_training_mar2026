@@ -1,4 +1,11 @@
 ---
-# ansible_host: 192.168.100.20
-server_role: test
+# ────────────────────────────────────────────────────────────────────────
+# host_vars/ubuntu-test.yaml — Variables specific to ubuntu-test host
+# ────────────────────────────────────────────────────────────────────────
+# These variables override group_vars/ubuntu_hosts.yaml and group_vars/all.yaml
+
+# ansible_host: 192.168.100.20  # Uncomment and edit if needed
+
+# Host-specific variables
+server_role: "test"
 motd: "Ubuntu test server — lab environment"

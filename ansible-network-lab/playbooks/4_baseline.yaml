@@ -1,0 +1,280 @@
+---
+# ────────────────────────────────────────────────────────────────────────────
+# Playbook 4.0 — Linux Baseline Configuration Lab
+# ────────────────────────────────────────────────────────────────────────────
+# Purpose: Enforce baseline configuration across Ubuntu and Red Hat VMs.
+#          This is the main lab exercise combining all concepts from Day 2:
+#          variables, conditionals, loops, facts, safety patterns, and assertions.
+#
+# Concepts demonstrated:
+#   - Cross-platform playbook (Debian and RedHat)
+#   - Using facts to drive logic (ansible_os_family)
+#   - Variable precedence (group_vars, host_vars, play vars)
+#   - File deployment (copy module)
+#   - Service management (service module)
+#   - Loops with assertions
+#   - Post-change validation
+#   - Safe execution patterns (check mode, diffs)
+#
+# Inventory requirements:
+#   - inventory/group_vars/all.yaml — common vars
+#   - inventory/group_vars/ubuntu_hosts.yaml — Ubuntu-specific
+#   - inventory/group_vars/redhat_hosts.yaml — RedHat-specific
+#   - inventory/host_vars/ubuntu-test.yaml — ubuntu-test specific
+#   - inventory/host_vars/redhat-vm.yaml — redhat-vm specific
+#
+# Execution workflow:
+#   1. Syntax check:  ansible-playbook playbooks/4_baseline.yaml --syntax-check
+#   2. Lint:          ansible-lint playbooks/4_baseline.yaml
+#   3. Dry run all:   ansible-playbook playbooks/4_baseline.yaml --check --diff
+#   4. Apply:         ansible-playbook playbooks/4_baseline.yaml --diff
+#   5. Verify:        ansible-playbook playbooks/4_baseline.yaml --tags validate
+#
+# Safety levers:
+#   --check         Dry-run (no changes)
+#   --diff          Show before/after for file tasks
+#   --limit ubuntu-test    Run on one host only
+#   --tags validate        Run only verification tasks
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+- name: Enforce baseline configuration on all Linux hosts
+  hosts: linux_hosts
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    # ── Pre-flight checks before changes ─────────────────────────────────
+    - name: "Pre-flight: Display play target"
+      debug:
+        msg: |
+          ════════════════════════════════════════════════════════════════
+          BASELINE CONFIGURATION PLAYBOOK
+          ════════════════════════════════════════════════════════════════
+          Target hosts: {{ groups['linux_hosts'] | join(', ') }}
+          Running on: {{ inventory_hostname }} ({{ ansible_os_family }})
+          Execution mode: {{ 'DRY RUN (--check)' if ansible_check_mode else 'APPLY' }}
+          ────────────────────────────────────────────────────────────────
+
+  tasks:
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 1: Host Identity & Facts
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 1.0 — Display host identity
+      debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════
+          SECTION 1: HOST IDENTITY
+          ═════════════════════════════════════════════════════════════════
+          Host: {{ inventory_hostname }}
+          Distribution: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          OS Family: {{ ansible_os_family }}
+          Kernel: {{ ansible_kernel }}
+          Architecture: {{ ansible_machine }}
+          IP Address: {{ ansible_default_ipv4.address }}
+          vCPUs: {{ ansible_processor_vcpus }}
+          Memory: {{ (ansible_memtotal_mb / 1024) | round(1) }} GB
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 2: Package Installation (Cross-Platform)
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 2.1 — Update package cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      tags:
+        - packages
+        - deploy
+
+    - name: 2.2 — Install required packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ packages_required }}"
+        state: present
+      when: ansible_os_family == "Debian"
+      tags:
+        - packages
+        - deploy
+
+    - name: 2.3 — Install required packages (RedHat)
+      ansible.builtin.dnf:
+        name: "{{ packages_required }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+      tags:
+        - packages
+        - deploy
+
+    - name: 2.4 — Display installed packages
+      debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════
+          SECTION 2: PACKAGE INSTALLATION
+          ═════════════════════════════════════════════════════════════════
+          Package manager: {{ 'apt' if ansible_os_family == 'Debian' else 'dnf' }}
+          Installing: {{ packages_required | join(', ') }}
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 3: File Deployment (MOTD Message)
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 3.1 — Deploy MOTD (Message of the Day)
+      ansible.builtin.copy:
+        content: "{{ motd_message }}"
+        dest: /etc/motd
+        owner: root
+        group: root
+        mode: '0644'
+      tags:
+        - files
+        - deploy
+
+    - name: 3.2 — Display MOTD deployment status
+      debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════
+          SECTION 3: FILE DEPLOYMENT (MOTD)
+          ═════════════════════════════════════════════════════════════════
+          Deployed: /etc/motd on {{ inventory_hostname }}
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 4: Service Management (SSH)
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 4.1 — Ensure SSH running and enabled (Debian/Ubuntu)
+      ansible.builtin.service:
+        name: ssh
+        state: started
+        enabled: true
+      when: ansible_os_family == "Debian"
+      tags:
+        - services
+        - deploy
+
+    - name: 4.2 — Ensure SSH running and enabled (RedHat)
+      ansible.builtin.service:
+        name: sshd
+        state: started
+        enabled: true
+      when: ansible_os_family == "RedHat"
+      tags:
+        - services
+        - deploy
+
+    - name: 4.3 — Display service deployment status
+      debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════
+          SECTION 4: SERVICE MANAGEMENT
+          ═════════════════════════════════════════════════════════════════
+          SSH service: Running and enabled on {{ inventory_hostname }}
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 5: Validation Tasks (After Changes)
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 5.1 — Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+      tags:
+        - validate
+
+    - name: 5.2 — Verify required packages are installed
+      assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "✗ Package {{ item }} MISSING on {{ inventory_hostname }}"
+        success_msg: "✓ Package {{ item }} confirmed on {{ inventory_hostname }}"
+      loop: "{{ packages_required }}"
+      loop_control:
+        label: "{{ item }}"
+      tags:
+        - validate
+
+    - name: 5.3 — Check MOTD file exists and is not empty
+      ansible.builtin.stat:
+        path: /etc/motd
+      register: motd_stat
+      tags:
+        - validate
+
+    - name: 5.4 — Verify MOTD file
+      assert:
+        that:
+          - motd_stat.stat.exists
+          - motd_stat.stat.size > 0
+        fail_msg: "✗ MOTD file missing or empty on {{ inventory_hostname }}"
+        success_msg: "✓ MOTD file confirmed {{ motd_stat.stat.size }} bytes on {{ inventory_hostname }}"
+      tags:
+        - validate
+
+    - name: 5.5 — Check SSH service status
+      ansible.builtin.shell:
+        cmd: systemctl is-active {{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}
+      register: ssh_status
+      changed_when: false
+      tags:
+        - validate
+
+    - name: 5.6 — Verify SSH service is active
+      assert:
+        that:
+          - ssh_status.stdout == "active"
+        fail_msg: "✗ SSH service NOT running on {{ inventory_hostname }}"
+        success_msg: "✓ SSH service active on {{ inventory_hostname }}"
+      tags:
+        - validate
+
+    - name: 5.7 — Get filesystem usage
+      ansible.builtin.shell:
+        cmd: df -h / | tail -1
+      register: root_fs_usage
+      changed_when: false
+      tags:
+        - validate
+
+    - name: 5.8 — Show filesystem status
+      debug:
+        msg: |
+          Root filesystem: {{ root_fs_usage.stdout }}
+      tags:
+        - validate
+
+    # ════════════════════════════════════════════════════════════════════
+    # SECTION 6: Summary Report
+    # ════════════════════════════════════════════════════════════════════
+
+    - name: 6.1 — Generate baseline completion report
+      debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════
+          BASELINE CONFIGURATION COMPLETE
+          ═════════════════════════════════════════════════════════════════
+          
+          ✓ Host: {{ inventory_hostname }}
+          ✓ OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          ✓ Packages installed: {{ packages_required | join(', ') }}
+          ✓ MOTD deployed: /etc/motd ({{ motd_stat.stat.size }} bytes)
+          ✓ SSH service: active {{ 'and enabled' if 'enabled' in lookup('pipe', 'systemctl is-enabled ' + ('ssh' if ansible_os_family == 'Debian' else 'sshd')) else '' }}
+          
+          All baseline requirements met on {{ inventory_hostname }}
+      tags:
+        - validate
+
+  post_tasks:
+    # ── Clean up and summary ───────────────────────────────────────────
+    - name: Display execution summary
+      debug:
+        msg: |
+          ════════════════════════════════════════════════════════════════
+          PLAYBOOK SUMMARY
+          ════════════════════════════════════════════════════════════════
+          Execution mode: {{ 'DRY RUN (--check)' if ansible_check_mode else 'LIVE' }}
+          Result: {{ 'SUCCESSFUL simulation' if ansible_check_mode else 'SUCCESS' }}
+          
+          Run validation only with:
+          ansible-playbook playbooks/4_baseline.yaml --tags validate
+      run_once: true
