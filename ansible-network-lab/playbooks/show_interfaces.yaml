@@ -1,0 +1,18 @@
+---
+# Block 1 — Exploration playbooks
+
+- name: Show interface state on all Arista nodes
+  hosts: arista_nodes
+  gather_facts: false
+
+  tasks:
+
+    - name: Get interface summary
+      arista.eos.eos_command:
+        commands:
+          - show ip interface brief
+      register: intf_output
+
+    - name: Display interface summary
+      ansible.builtin.debug:
+        msg: "{{ intf_output.stdout[0] }}"
