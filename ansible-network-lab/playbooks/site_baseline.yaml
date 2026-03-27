@@ -7,10 +7,8 @@
   gather_facts: false
 
   tasks:
-
     - name: Apply baseline roles with rollback on failure
       block:
-
         - name: Take pre-change backup
           arista.eos.eos_config:
             backup: true
@@ -29,7 +27,6 @@
             name: eos_snmp
 
       rescue:
-
         - name: Log failure
           ansible.builtin.debug:
             msg: >
@@ -42,7 +39,6 @@
           when: backup_result.backup_path is defined
 
       always:
-
         - name: Capture final device state
           arista.eos.eos_command:
             commands:
@@ -52,5 +48,5 @@
         - name: Save final state artifact
           ansible.builtin.copy:
             content: "{{ final_state.stdout[0] }}"
-            dest: "./artifacts/{{ inventory_hostname }}_final_{{ ansible_date_time.date }}.txt"
+            dest: "./artifacts/{{ inventory_hostname }}_final_{{ now(fmt='%Y-%m-%d') }}.txt"
           delegate_to: localhost
