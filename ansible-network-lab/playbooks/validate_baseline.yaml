@@ -1,0 +1,55 @@
+---
+# Capstone Lab — Block 4
+# Validates NTP, banner, and SNMP config post-apply using assert + artifacts
+
+- name: Validate baseline configuration — all Arista nodes
+  hosts: arista_nodes
+  gather_facts: false
+
+  tasks:
+
+    - name: Gather post-change state
+      arista.eos.eos_command:
+        commands:
+          - show running-config | include ntp
+          - show running-config | section banner
+          - show running-config | include snmp
+      register: validation_output
+
+    - name: Assert NTP is configured
+      ansible.builtin.assert:
+        that:
+          - "'ntp server' in validation_output.stdout[0]"
+        fail_msg: "NTP config missing on {{ inventory_hostname }}"
+        success_msg: "NTP confirmed on {{ inventory_hostname }}"
+
+    - name: Assert banner is set
+      ansible.builtin.assert:
+        that:
+          - "'banner motd' in validation_output.stdout[1]"
+        fail_msg: "Banner not set on {{ inventory_hostname }}"
+        success_msg: "Banner confirmed on {{ inventory_hostname }}"
+
+    - name: Assert SNMP is configured
+      ansible.builtin.assert:
+        that:
+          - "'snmp-server community' in validation_output.stdout[2]"
+        fail_msg: "SNMP config missing on {{ inventory_hostname }}"
+        success_msg: "SNMP confirmed on {{ inventory_hostname }}"
+
+    - name: Save validation artifact
+      ansible.builtin.copy:
+        content: |
+          Validation run: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          ---
+          NTP:
+          {{ validation_output.stdout[0] }}
+          ---
+          Banner:
+          {{ validation_output.stdout[1] }}
+          ---
+          SNMP:
+          {{ validation_output.stdout[2] }}
+        dest: "./artifacts/{{ inventory_hostname }}_validation_{{ ansible_date_time.date }}.txt"
+      delegate_to: localhost

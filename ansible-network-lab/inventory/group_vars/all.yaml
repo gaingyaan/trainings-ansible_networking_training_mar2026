@@ -1,0 +1,14 @@
+---
+# ────────────────────────────────────────────────────────────────────────
+# group_vars/all.yaml — Variables applied to ALL hosts regardless of group
+# ────────────────────────────────────────────────────────────────────────
+
+ansible_python_interpreter: /usr/bin/python3
+environment: lab
+
+# Message of the Day — deployed by baseline playbook
+motd_message: |
+  ******************************************
+  * Lab server — authorised access only    *
+  * All activity is monitored              *
+  ******************************************

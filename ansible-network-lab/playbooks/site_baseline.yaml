@@ -1,0 +1,52 @@
+---
+# Capstone Lab — Block 4
+# Applies eos_ntp, eos_banner, eos_snmp roles with block/rescue/always
+
+- name: Apply baseline configuration — all Arista nodes
+  hosts: arista_nodes
+  gather_facts: false
+
+  tasks:
+    - name: Apply baseline roles with rollback on failure
+      block:
+        - name: Take pre-change backup
+          arista.eos.eos_config:
+            backup: true
+          register: backup_result
+
+        - name: Apply NTP role
+          ansible.builtin.include_role:
+            name: eos_ntp
+
+        - name: Apply banner role
+          ansible.builtin.include_role:
+            name: eos_banner
+
+        - name: Apply SNMP role
+          ansible.builtin.include_role:
+            name: eos_snmp
+
+      rescue:
+        - name: Log failure
+          ansible.builtin.debug:
+            msg: >
+              FAILURE on {{ inventory_hostname }}: {{ ansible_failed_result.msg | default('unknown error') }}
+
+        - name: Restore pre-change config
+          arista.eos.eos_config:
+            src: "{{ backup_result.backup_path }}"
+            save_when: always
+          when: backup_result.backup_path is defined
+
+      always:
+        - name: Capture final device state
+          arista.eos.eos_command:
+            commands:
+              - show running-config
+          register: final_state
+
+        - name: Save final state artifact
+          ansible.builtin.copy:
+            content: "{{ final_state.stdout[0] }}"
+            dest: "./artifacts/{{ inventory_hostname }}_final_{{ now(fmt='%Y-%m-%d') }}.txt"
+          delegate_to: localhost

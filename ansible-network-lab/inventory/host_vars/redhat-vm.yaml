@@ -1,0 +1,11 @@
+---
+# ────────────────────────────────────────────────────────────────────────
+# host_vars/redhat-vm.yaml — Variables specific to redhat-vm host
+# ────────────────────────────────────────────────────────────────────────
+# These variables override group_vars/redhat_hosts.yaml and group_vars/all.yaml
+
+# ansible_host: 192.168.100.30  # Uncomment and edit if needed
+
+# Host-specific variables
+server_role: "test"
+motd: "Red Hat test server — lab environment"

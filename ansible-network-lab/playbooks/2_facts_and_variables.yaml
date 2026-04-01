@@ -1,0 +1,219 @@
+---
+# ────────────────────────────────────────────────────────────────────────────
+# Playbook 2.0 — Facts Discovery and Variable precedence
+# ────────────────────────────────────────────────────────────────────────────
+# Purpose: Demonstrate Ansible facts, variable precedence, and the register
+#          keyword. Runs against managed nodes to collect and display facts.
+#
+# Concepts demonstrated:
+#   - gather_facts and Ansible facts
+#   - Variable precedence (group_vars → host_vars → play vars)
+#   - register keyword to capture task output
+#   - Facts from different modules
+#   - Jinja2 filters and variable access
+#
+# Usage:
+#   ansible-playbook playbooks/2_facts_and_variables.yaml --syntax-check
+#   ansible-playbook playbooks/2_facts_and_variables.yaml --check
+#   ansible-playbook playbooks/2_facts_and_variables.yaml -v
+#
+# Note: Uses variables from inventory/group_vars/ and inventory/host_vars/
+# Requires connectivity to linux_hosts inventory group
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+- name: Discover facts and demonstrate variable precedence
+  hosts: linux_hosts
+  gather_facts: true
+  become: false
+
+  # ── Section 1: Play-level variables ──────────────────────────────────
+  vars:
+    play_level_var: "I am defined at play level"
+
+  tasks:
+
+    # ── Section 2: Display host identity facts ──────────────────────────
+    - name: Section 2 — Host Identity Facts
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 2: HOST IDENTITY FACTS
+          ═══════════════════════════════════════════════════════════
+          
+          Inventory hostname: {{ inventory_hostname }}
+          Hostname from fact: {{ ansible_hostname }}
+          
+          Distribution: {{ ansible_distribution }}
+          Distribution version: {{ ansible_distribution_version }}
+          OS family: {{ ansible_os_family }}
+          
+          Default IPv4 address: {{ ansible_default_ipv4.address }}
+          Primary subnet mask: {{ ansible_default_ipv4.netmask }}
+          
+          System uptime (seconds): {{ ansible_uptime_seconds }}
+          Boot time (timestamp): {{ ansible_date_time.iso8601 }}
+
+    # ── Section 3: Hardware and resource facts ───────────────────────────
+    - name: Section 3 — Hardware and Resources
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 3: HARDWARE & RESOURCES
+          ═══════════════════════════════════════════════════════════
+          
+          Total RAM: {{ ansible_memtotal_mb }} MB
+          Available RAM: {{ ansible_memfree_mb }} MB
+          
+          Processor type: {{ ansible_processor[0] }}
+          vCPUs: {{ ansible_processor_vcpus }}
+          Cores per socket: {{ ansible_processor_cores }}
+          
+          Disk devices: {{ ansible_devices.keys() | list | join(', ') }}
+
+    # ── Section 4: Variable precedence (read from inventory) ─────────────
+    - name: Section 4 — Variable Precedence Demo
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 4: VARIABLE PRECEDENCE
+          ═══════════════════════════════════════════════════════════
+          
+          Source analysis:
+            • group_vars/all.yaml — applies to all hosts
+            • group_vars/<os_family>.yaml — applies to OS-specific group
+            • host_vars/<hostname>.yaml — specific host (HIGHEST priority)
+            • play vars: — play level (tested below)
+          
+          Example values:
+            ansible_python_interpreter (from group_vars/all): {{ ansible_python_interpreter | default('NOT SET') }}
+            ansible_user (from group_vars/{{ ansible_os_family | lower }}): {{ ansible_user | default('NOT SET') }}
+            server_role (from host_vars): {{ server_role | default('NOT SET') }}
+            environment (from group_vars/all): {{ environment | default('NOT SET') }}
+
+    # ── Section 5: Capture task output with register ─────────────────────
+    - name: Section 5A — Register: Check if MOTD exists
+      ansible.builtin.stat:
+        path: /etc/motd
+      register: motd_stat
+
+    - name: Section 5B — Display registered stat result
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 5: REGISTER KEYWORD
+          ═══════════════════════════════════════════════════════════
+          
+          Full registered result structure:
+          {{ motd_stat | to_nice_json }}
+
+    - name: Section 5C — Using registered data in conditionals
+      debug:
+        msg: "MOTD file EXISTS on {{ inventory_hostname }}"
+      when: motd_stat.stat.exists
+
+    - name: Section 5D — Read MOTD file if it exists
+      ansible.builtin.shell:
+        cmd: cat /etc/motd 2>/dev/null || echo "No MOTD file"
+      register: motd_content
+      changed_when: false
+
+    - name: Section 5E — Display MOTD content
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          MOTD Content:
+          {{ motd_content.stdout }}
+
+    # ── Section 6: Gather package information ────────────────────────────
+    - name: Section 6A — Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Section 6B — Show package summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 6: INSTALLED PACKAGES
+          ═══════════════════════════════════════════════════════════
+          
+          Total packages installed: {{ ansible_facts.packages | length }}
+          
+          Sample packages:
+          {% for pkg in ansible_facts.packages.keys() | list | first(5) %}
+            • {{ pkg }}: {{ ansible_facts.packages[pkg][0].version }}
+          {% endfor %}
+
+    # ── Section 7: Check for specific packages ───────────────────────────
+    - name: Section 7A — Check if vim is installed
+      debug:
+        msg: "vim is {{ 'INSTALLED' if 'vim' in ansible_facts.packages else 'NOT INSTALLED' }}"
+
+    - name: Section 7B — Check if curl is installed
+      debug:
+        msg: "curl is {{ 'INSTALLED' if 'curl' in ansible_facts.packages else 'NOT INSTALLED' }}"
+
+    # ── Section 8: Shell command register ────────────────────────────────
+    - name: Section 8A — Check disk usage
+      ansible.builtin.shell:
+        cmd: df -h / | tail -1
+      register: disk_usage
+      changed_when: false
+
+    - name: Section 8B — Show disk usage (raw)
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 8: SHELL COMMAND REGISTER
+          ═══════════════════════════════════════════════════════════
+          
+          Raw command output:
+          {{ disk_usage.stdout }}
+          
+          As list of lines:
+          {{ disk_usage.stdout_lines }}
+
+    # ── Section 9: Demonstrate all variable sources together ──────────────
+    - name: Section 9 — All Variable Sources
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 9: COMPLETE VARIABLE REFERENCE
+          ═══════════════════════════════════════════════════════════
+          
+          From facts (auto-discovered):
+            • Hostname: {{ ansible_hostname }}
+            • IP Address: {{ ansible_default_ipv4.address }}
+            • OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          
+          From inventory group_vars/all.yaml:
+            • Python interpreter: {{ ansible_python_interpreter }}
+            • Environment: {{ environment | default('undefined') }}
+          
+          From host_vars/<hostname>.yaml:
+            • Server role: {{ server_role | default('undefined') }}
+            • MOTD message: {{ motd | default('undefined') }}
+          
+          From play vars:
+            • Play level: {{ play_level_var }}
+          
+          From register (task results):
+            • MOTD file exists: {{ motd_stat.stat.exists }}
+            • Disk usage line: {{ disk_usage.stdout_lines[0] if disk_usage.stdout_lines else 'N/A' }}
+
+    # ── Section 10: Test variable overrides with extra vars ──────────────
+    - name: Section 10 — Variable Override Exercise
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 10: TRY VARIABLE OVERRIDE
+          ═══════════════════════════════════════════════════════════
+          
+          Run this command to override at runtime:
+          
+          ansible-playbook playbooks/2_facts_and_variables.yaml \\
+            -e "environment=production" \\
+            -e "custom_var=runtime_value"
+          
+          Then see custom_var here:
+          custom_var = {{ custom_var | default('(not provided, use -e flag)') }}

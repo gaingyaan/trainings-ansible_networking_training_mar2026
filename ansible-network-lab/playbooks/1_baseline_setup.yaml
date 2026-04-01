@@ -1,0 +1,107 @@
+---
+# ────────────────────────────────────────────────────────────────────────────
+# Playbook 1.0 — Baseline Environment Setup
+# ────────────────────────────────────────────────────────────────────────────
+# Purpose: Verify Ansible installation, create configuration files, and establish
+#          lint workflow. This is a pre-lab setup task.
+#
+# Concepts demonstrated:
+#   - YAML structure and syntax
+#   - Playbook anatomy (hosts, tasks, become)
+#   - File creation with copy and template modules
+#   - Conditional execution (when)
+#   - Shell commands for verification
+#
+# Usage:
+#   ansible-playbook playbooks/1_baseline_setup.yaml --syntax-check
+#   ansible-playbook playbooks/1_baseline_setup.yaml --check --diff
+#   ansible-playbook playbooks/1_baseline_setup.yaml --diff
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+- name: Verify Ansible environment and display configuration
+  hosts: localhost
+  gather_facts: true
+  become: false
+
+  vars:
+    project_root: "{{ playbook_dir | dirname }}"
+
+  tasks:
+
+    # ── Section 1: Display environment information ──────────────────────
+    - name: Show Ansible installation details
+      debug:
+        msg: |
+          Ansible Version: {{ ansible_version.full }}
+          Python: {{ ansible_python_version }}
+          Config File: {{ ansible_config_file | default('None — using system default') }}
+          Inventory: {{ ansible_inventory_sources | join(', ') }}
+          Project Root: {{ project_root }}
+
+    # ── Section 2: Verify Python packages ───────────────────────────────
+    - name: Check if yamllint is installed
+      ansible.builtin.shell:
+        cmd: pip3 show yamllint | grep Version || echo "yamllint NOT installed"
+      register: yamllint_check
+      changed_when: false
+
+    - name: Check if ansible-lint is installed
+      ansible.builtin.shell:
+        cmd: pip3 show ansible-lint | grep Version || echo "ansible-lint NOT installed"
+      register: ansible_lint_check
+      changed_when: false
+
+    - name: Show linter status
+      debug:
+        msg: |
+          yamllint: {{ yamllint_check.stdout_lines[0] | default('NOT installed') }}
+          ansible-lint: {{ ansible_lint_check.stdout_lines[0] | default('NOT installed') }}
+
+    # ── Section 3: Verify configuration files exist ─────────────────────
+    - name: Check for ansible.cfg
+      ansible.builtin.stat:
+        path: "{{ project_root }}/ansible.cfg"
+      register: ansible_cfg_stat
+
+    - name: Check for .yamllint
+      ansible.builtin.stat:
+        path: "{{ project_root }}/.yamllint"
+      register: yamllint_cfg_stat
+
+    - name: Check for .ansible-lint
+      ansible.builtin.stat:
+        path: "{{ project_root }}/.ansible-lint"
+      register: ansible_lint_cfg_stat
+
+    - name: Show configuration file status
+      debug:
+        msg: |
+          ansible.cfg: {{ 'EXISTS' if ansible_cfg_stat.stat.exists else 'MISSING' }}
+          .yamllint: {{ 'EXISTS' if yamllint_cfg_stat.stat.exists else 'MISSING' }}
+          .ansible-lint: {{ 'EXISTS' if ansible_lint_cfg_stat.stat.exists else 'MISSING' }}
+
+    # ── Section 4: Display installation instructions (informational) ─────
+    - name: Show installation commands if packages missing
+      debug:
+        msg: |
+          If linters are missing, run these commands on your system:
+          
+          pip3 install yamllint ansible-lint pre-commit --break-system-packages
+          
+          Then verify:
+          yamllint --version
+          ansible-lint --version
+      when: "'NOT installed' in yamllint_check.stdout or 'NOT installed' in ansible_lint_check.stdout"
+
+    # ── Section 5: Test Jinja2 variable substitution ─────────────────────
+    - name: Demonstrate Jinja2 filters
+      debug:
+        msg: |
+          Hostname (original): {{ inventory_hostname }}
+          Hostname (uppercase): {{ inventory_hostname | upper }}
+          Hostname (lowercase): {{ inventory_hostname | lower }}
+          
+          String length: {{ inventory_hostname | length }} characters
+          
+          Project path: {{ project_root }}

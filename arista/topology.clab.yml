@@ -1,0 +1,32 @@
+name: ansible-lab
+
+topology:
+  nodes:
+    R1:
+      kind: arista_ceos
+      image: ceos:4.35.3F
+      mgmt-ipv4: 192.168.10.101
+      startup-config: |
+        username admin privilege 15 secret admin
+        !
+        management api http-commands
+         no shutdown
+        !
+
+    R2:
+      kind: arista_ceos
+      image: ceos:4.35.3F
+      mgmt-ipv4: 192.168.10.102
+      startup-config: |
+        username admin privilege 15 secret admin
+        !
+        management api http-commands
+         no shutdown
+        !
+
+  links:
+    - endpoints: ["R1:eth1", "R2:eth1"]
+
+mgmt:
+  network: clab-macvlan
+  ipv4-subnet: 192.168.10.0/24

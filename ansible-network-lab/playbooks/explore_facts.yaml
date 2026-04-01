@@ -1,0 +1,28 @@
+---
+# Block 1 — Exploration playbooks
+
+- name: Explore EOS facts structure
+  hosts: arista_nodes
+  gather_facts: false
+
+  tasks:
+
+    - name: Gather EOS facts
+      arista.eos.eos_facts:
+        gather_subset:
+          - all
+
+    - name: Display hostname and version
+      ansible.builtin.debug:
+        msg: >
+          Host: {{ inventory_hostname }}
+          EOS version: {{ ansible_net_version }}
+          Model: {{ ansible_net_model }}
+          Serial: {{ ansible_net_serialnum }}
+
+    - name: List all interfaces via facts
+      ansible.builtin.debug:
+        msg: "Interface: {{ item.key }}"
+      loop: "{{ ansible_net_interfaces | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"

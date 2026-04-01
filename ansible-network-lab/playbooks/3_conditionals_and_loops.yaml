@@ -1,0 +1,296 @@
+---
+# ────────────────────────────────────────────────────────────────────────────
+# Playbook 3.0 — Conditionals, set_fact, and Loops
+# ────────────────────────────────────────────────────────────────────────────
+# Purpose: Demonstrate conditional execution (when), set_fact for runtime
+#          variables, and loop patterns with various data types.
+#
+# Concepts demonstrated:
+#   - when conditions (equality, string matching, fact checks)
+#   - Negate conditions (not)
+#   - AND/OR logic
+#   - set_fact to create variables dynamically
+#   - loop over simple lists
+#   - loop over lists of dictionaries
+#   - loop_control for cleaner output
+#   - Registering results from loops
+#
+# Usage:
+#   ansible-playbook playbooks/3_conditionals_and_loops.yaml --syntax-check
+#   ansible-playbook playbooks/3_conditionals_and_loops.yaml --check --limit ubuntu-test
+#   ansible-playbook playbooks/3_conditionals_and_loops.yaml -v
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+- name: Demonstrate conditionals, set_fact, and loops
+  hosts: linux_hosts
+  gather_facts: true
+  become: false
+
+  vars:
+    # Sample data for loop demonstrations
+    required_directories:
+      - /tmp/lab-dir-1
+      - /tmp/lab-dir-2
+      - /tmp/lab-dir-3
+
+    sample_config_files:
+      - name: app.conf
+        owner: root
+        mode: "0644"
+      - name: db.conf
+        owner: database
+        mode: "0640"
+      - name: api.conf
+        owner: api
+        mode: "0750"
+
+  tasks:
+
+    # ── Section 1: Simple when conditions ────────────────────────────────
+    - name: Section 1 — Simple when Conditions
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 1: SIMPLE WHEN CONDITIONS
+          ═══════════════════════════════════════════════════════════
+
+    - name: 1A — Equality check (Debian only)
+      debug:
+        msg: "✓ This host runs {{ ansible_os_family }} Linux"
+      when: ansible_os_family == "Debian"
+
+    - name: 1B — Equality check (RedHat only)
+      debug:
+        msg: "✓ This host runs {{ ansible_os_family }} Linux"
+      when: ansible_os_family == "RedHat"
+
+    - name: 1C — String contains check
+      debug:
+        msg: "✓ Distribution is {{ ansible_distribution }}"
+      when: "'buntu' in ansible_distribution"
+
+    # ── Section 2: Negate and complex conditions ────────────────────────
+    - name: Section 2 — Negate and Logical Operators
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 2: NEGATE & LOGICAL CONDITIONS
+          ═══════════════════════════════════════════════════════════
+
+    - name: 2A — Negate a condition
+      debug:
+        msg: "✓ This is NOT CentOS"
+      when: ansible_distribution != "CentOS"
+
+    - name: 2B — AND logic (all must be true)
+      debug:
+        msg: "✓ Running {{ ansible_distribution }} version {{ ansible_distribution_version }}"
+      when:
+        - ansible_distribution is defined
+        - ansible_distribution_version is defined
+
+    - name: 2C — OR logic (one or more true)
+      debug:
+        msg: "✓ This is a Debian-family or RedHat-family system"
+      when:
+        - ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+
+    # ── Section 3: Conditional file checks ───────────────────────────────
+    - name: Section 3 — File Existence Checks with register
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 3: FILE CHECKS & REGISTRATION
+          ═══════════════════════════════════════════════════════════
+
+    - name: 3A — Check if SSH key exists
+      ansible.builtin.stat:
+        path: ~/.ssh/id_rsa
+      register: ssh_key_stat
+
+    - name: 3B — Conditional on registered result
+      debug:
+        msg: "✓ SSH public key exists"
+      when: ssh_key_stat.stat.exists
+
+    - name: 3C — Conditional on absence
+      debug:
+        msg: "! SSH public key NOT found (expected in lab)"
+      when: not ssh_key_stat.stat.exists
+
+    # ── Section 4: set_fact for runtime variables ────────────────────────
+    - name: Section 4 — set_fact Create Runtime Variables
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 4: SET_FACT — DYNAMIC VARIABLES
+          ═══════════════════════════════════════════════════════════
+
+    - name: 4A — Set package manager based on OS
+      set_fact:
+        pkg_manager: "{{ 'apt' if ansible_os_family == 'Debian' else 'dnf' }}"
+        pkg_update_cmd: "{{ 'apt update' if ansible_os_family == 'Debian' else 'dnf refresh' }}"
+
+    - name: 4B — Display derived facts
+      debug:
+        msg: |
+          Package manager for {{ inventory_hostname }}: {{ pkg_manager }}
+          Update command: {{ pkg_update_cmd }}
+
+    - name: 4C — Calculate derived value from fact
+      ansible.builtin.shell:
+        cmd: df / --output=avail | tail -1
+      register: disk_avail_kb
+      changed_when: false
+
+    - name: 4D — Convert to GB using set_fact
+      set_fact:
+        disk_available_gb: "{{ (disk_avail_kb.stdout | int / 1024 / 1024) | round(2) }}"
+
+    - name: 4E — Show calculated fact
+      debug:
+        msg: "Available disk space: {{ disk_available_gb }} GB"
+
+    # ── Section 5: Simple loop over a list ───────────────────────────────
+    - name: Section 5 — Loop Over Simple List
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 5: SIMPLE LOOP
+          ═══════════════════════════════════════════════════════════
+
+    - name: 5A — Show each directory separately
+      debug:
+        msg: "→ Directory: {{ item }}"
+      loop: "{{ required_directories }}"
+      loop_control:
+        label: "{{ item | basename }}"
+
+    # ── Section 6: Loop over list with conditional ───────────────────────
+    - name: Section 6 — Loop with when Condition
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 6: LOOP WITH WHEN CONDITION
+          ═══════════════════════════════════════════════════════════
+
+    - name: 6A — Loop: Show only directories containing 'dir-2'
+      debug:
+        msg: "✓ This directory contains 'dir-2': {{ item }}"
+      loop: "{{ required_directories }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      when: "'dir-2' in item"
+
+    # ── Section 7: Loop over dictionary list ─────────────────────────────
+    - name: Section 7 — Loop Over List of Dictionaries
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 7: LOOP DICTIONARIES
+          ═══════════════════════════════════════════════════════════
+
+    - name: 7A — Show config file details
+      debug:
+        msg: |
+          File: {{ item.name }}
+            • Owner: {{ item.owner }}
+            • Mode: {{ item.mode }}
+      loop: "{{ sample_config_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ── Section 8: Register results from loop ────────────────────────────
+    - name: Section 8 — Register Loop Results
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 8: LOOP WITH REGISTRATION
+          ═══════════════════════════════════════════════════════════
+
+    - name: 8A — Check each directory status (this is a demo, dirs don't exist)
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ required_directories }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: dir_checks
+
+    - name: 8B — Show structure of registered loop results
+      debug:
+        msg: |
+          Registered results has structure:
+            • results: array of results
+            • length: {{ dir_checks.results | length }}
+          
+          Full structure:
+          {{ dir_checks | to_nice_json }}
+
+    - name: 8C — Process registered results (show which exist)
+      debug:
+        msg: "{{ item.item | basename }}: {{ 'EXISTS' if item.stat.exists else 'missing' }}"
+      loop: "{{ dir_checks.results }}"
+      loop_control:
+        label: "{{ item.item | basename }}"
+
+    # ── Section 9: loop_control options ─────────────────────────────────
+    - name: Section 9 — loop_control Options
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 9: LOOP_CONTROL OPTIONS
+          ═══════════════════════════════════════════════════════════
+
+    - name: 9A — Loop with index_var
+      debug:
+        msg: "File #{{ loop_idx }}: {{ item.name }}"
+      loop: "{{ sample_config_files }}"
+      loop_control:
+        index_var: loop_idx
+        label: "{{ item.name }}"
+
+    # ── Section 10: Combining loops with set_fact ─────────────────────────
+    - name: Section 10 — Loop With set_fact Results
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          SECTION 10: LOOP + SET_FACT PATTERN
+          ═══════════════════════════════════════════════════════════
+
+    - name: 10A — Build a dynamic fact from loop results
+      set_fact:
+        file_owners: "{{ sample_config_files | map(attribute='name') | list | join(', ') }}"
+
+    - name: 10B — Show derived fact
+      debug:
+        msg: "Config files managed: {{ file_owners }}"
+
+    # ── Section 11: Summary of all patterns ──────────────────────────────
+    - name: Section 11 — Pattern Summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          PATTERN SUMMARY & NEXT STEPS
+          ═══════════════════════════════════════════════════════════
+          
+          CONDITIONALS (when):
+            when: variable == "value"           # equality
+            when: "'string' in variable"        # contains
+            when: variable is defined           # defined
+            when: result.stat.exists            # result check
+            when: not condition                 # negate
+            when: [cond1, cond2]                # AND logic
+            when: cond1 or cond2                # OR logic
+          
+          SET_FACT:
+            set_fact: derived_var: "{{ calculation }}"
+          
+          LOOPS:
+            loop: "{{ simple_list }}"           # simple list
+            loop: "{{ list_of_dicts }}"         # dictionary list
+            loop_control:
+              label: "{{ item.name }}"          # cleaner output
+              index_var: idx                    # access loop number
+          
+          Next: Use these patterns in Playbook 4 (Baseline Lab)
